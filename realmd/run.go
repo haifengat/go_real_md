@@ -183,36 +183,37 @@ func (r *RealMd) runTick(bs []byte) {
 
 func (r *RealMd) startQuote() {
 	r.q.RegOnFrontConnected(func() {
-		logrus.Infoln("connected")
+		logrus.Infoln("quote connected")
 		r.q.ReqLogin(r.investorID, r.password, r.brokerID)
 	})
 	r.q.RegOnRspUserLogin(func(login *goctp.RspUserLoginField, info *goctp.RspInfoField) {
 		logrus.Infoln("quote login:", info)
-		// q.ReqSubscript("rb2011")
+		// r.q.ReqSubscript("au2012")
 		for inst := range r.t.Instruments {
 			r.q.ReqSubscript(inst)
 		}
 		logrus.Infof("subscript instrument count: %d", len(r.t.Instruments))
 	})
 	r.q.RegOnTick(r.onTick)
+	logrus.Infoln("connected to quote...")
 	r.q.ReqConnect(r.quoteFront)
 }
 
 func (r *RealMd) startTrade() {
 	logrus.Infoln("connected to trade...")
 	r.t.RegOnFrontConnected(func() {
-		logrus.Infoln("connected")
+		logrus.Infoln("trade connected")
 		go r.t.ReqLogin(r.investorID, r.password, r.brokerID, r.appID, r.authCode)
 	})
 	r.t.RegOnFrontDisConnected(func(reason int) {
-		logrus.Infof("trade disconnected %d\n", reason)
+		logrus.Infof("trade disconnected %d", reason)
 	})
 	r.t.RegOnRspUserLogin(func(login *goctp.RspUserLoginField, info *goctp.RspInfoField) {
 		logrus.Infof("trade login info: %v\n", *login)
 		if info.ErrorID == 0 {
 			// 过期时间
 			d, _ := time.ParseInLocation("20060102", login.TradingDay, time.Local) // time.local保持时区一致
-			t, _ := time.ParseDuration("20h30m")
+			t, _ := time.ParseDuration("18h30m")                                   // 交易日的 18:30 过期
 			exTime := d.Add(t)
 			rdsTime, _ := r.rdb.Time(r.ctx).Result()
 			// 根据redis服务器时间计算出过期时间,避免时间差异导致数据直接过期
@@ -236,8 +237,11 @@ func (r *RealMd) Run() {
 	for !r.t.IsLogin {
 
 	}
-	defer r.t.Release()
-	defer r.q.Release()
+	defer func() {
+		logrus.Info("close api")
+		r.t.Release()
+		r.q.Release()
+	}()
 	for {
 		var cntNotClose = 0
 		var cntTrading = 0
@@ -245,7 +249,8 @@ func (r *RealMd) Run() {
 		for _, status := range r.t.InstrumentStatuss {
 			if status != goctp.InstrumentStatusClosed {
 				cntNotClose++
-			} else if status == goctp.InstrumentStatusContinous {
+			}
+			if status == goctp.InstrumentStatusContinous {
 				cntTrading++
 			}
 		}
