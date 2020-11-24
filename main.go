@@ -4,7 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
-	"realmd/realmd"
+	"realmd/src"
 	"sort"
 	"strings"
 	"sync"
@@ -50,11 +50,13 @@ func main() {
 			}
 			// 15:00前开启
 			if startTime, _ := time.ParseInLocation("20060102 15:04:05", fmt.Sprintf("%s 15:45:00", curDate), time.Local); time.Now().Before(startTime) {
-				wgTradingPause.Add(1)
-				go func() {
-					realmd.NewRealMd().Run() // 交易所关闭后会退出
-					wgTradingPause.Done()
-				}()
+				var md *src.RealMd
+				var err error
+				if md, err = src.NewRealMd(); err != nil {
+					logrus.Error("接口生成错误:", err)
+					return
+				}
+				md.Run() // 交易所关闭后 or 夜盘结束 退出
 				logrus.Info("waiting for trading close...")
 				wgTradingPause.Wait()
 			}
@@ -68,11 +70,13 @@ func main() {
 				time.Sleep(startTime.Sub(time.Now()))
 			}
 			// 夜盘开启
-			wgTradingPause.Add(1)
-			go func() {
-				realmd.NewRealMd().Run() // 交易所关闭后 or 夜盘结束 退出
-				wgTradingPause.Done()
-			}()
+			var md *src.RealMd
+			var err error
+			if md, err = src.NewRealMd(); err != nil {
+				logrus.Error("接口生成错误:", err)
+				return
+			}
+			md.Run() // 交易所关闭后 or 夜盘结束 退出
 			logrus.Info("waiting for trading night close...")
 			wgTradingPause.Wait()
 			curDate = time.Now().Format("20060102")
