@@ -224,7 +224,7 @@ func (r *RealMd) startTrade() {
 		logrus.Infof("trade disconnected %d", reason)
 	})
 	r.t.RegOnRspUserLogin(func(login *goctp.RspUserLoginField, info *goctp.RspInfoField) {
-		logrus.Infof("trade login info: %v\n", *login)
+		logrus.Infof("trade login info: %v", info)
 		if info.ErrorID == 0 {
 			// 过期时间
 			d, _ := time.ParseInLocation("20060102", login.TradingDay, time.Local) // time.local保持时区一致

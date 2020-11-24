@@ -23,7 +23,7 @@ pgMin|127.0.0.1:5432|分钟pg库配置
 ### 测试
 tradeFront=tcp://180.168.146.187:10130 quoteFront=tcp://180.168.146.187:10131 \
 loginInfo="9999/008107/1/simnow_client_test/0000000000000000" \
-redisAddr=172.19.129.98:26379 \
+redisAddr=172.19.129.98:16379 \
 pgMin=postgresql://postgres:12345@172.19.129.98:20032/postgres?sslmode=disable \
 go run main.go
 
