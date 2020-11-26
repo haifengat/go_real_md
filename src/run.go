@@ -105,11 +105,20 @@ func (r *RealMd) onTick(data *goctp.TickField) {
 	}
 }
 
-func (r *RealMd) runTick(bs []byte) {
+func (r *RealMd) runTick(bsTick []byte) {
 	mapTick := make(map[string]interface{})
-	json.Unmarshal(bs, &mapTick)
+	json.Unmarshal(bsTick, &mapTick)
 	// strconv.ParseFloat(fmt.Sprintf("%.2f", 9.815), 64)  sprintf四舍五入采用 奇舍偶入的规则
 	inst, updateTime, last, volume, oi := mapTick["InstrumentID"].(string), mapTick["UpdateTime"].(string), mapTick["LastPrice"].(float64), int(mapTick["Volume"].(float64)), mapTick["OpenInterest"].(float64)
+	// 合约状态过滤
+	if info, ok := r.t.Instruments.Load(inst); ok {
+		pid := info.(goctp.InstrumentField).ProductID
+		if s, ok := r.t.InstrumentStatuss.Load(pid); ok {
+			if s.(goctp.InstrumentStatus).InstrumentStatus != goctp.InstrumentStatusContinous {
+				return
+			}
+		}
+	}
 	last, _ = strconv.ParseFloat(fmt.Sprintf("%.4f", last), 64)
 	// 取tick的分钟构造当前分钟时间
 	if r.actionDay == "" { // 取第一个actionday不为空的数据
@@ -169,22 +178,22 @@ func (r *RealMd) runTick(bs []byte) {
 			mapMin["OpenInterest"] = oi
 
 			// 此时间是否 push过
-			if jsonBs, err := json.Marshal(mapMin); err != nil {
+			if jsMin, err := json.Marshal(mapMin); err != nil {
 				logrus.Errorf("map min to json error: %v", err)
 			} else {
 				// 发布分钟数据
-				r.rdb.Publish(r.ctx, "md."+inst, bs)
+				r.rdb.Publish(r.ctx, "md."+inst, jsMin)
 				// 当前分钟未被记录
 				if curMin, ok := r.mapPushedMin.LoadOrStore(inst, minDateTime); !ok || curMin != minDateTime {
 					r.mapPushedMin.Store(inst, minDateTime)
-					err := r.rdb.RPush(r.ctx, inst, jsonBs).Err()
+					err := r.rdb.RPush(r.ctx, inst, jsMin).Err()
 					if err != nil {
 						logrus.Errorf("redis rpush error: %s %v", inst, err)
 					} else if !ok { // 合约首次记录
 						r.rdb.ExpireAt(r.ctx, inst, r.expireTime)
 					}
 				} else {
-					err := r.rdb.LSet(r.ctx, inst, -1, jsonBs).Err()
+					err := r.rdb.LSet(r.ctx, inst, -1, jsMin).Err()
 					if err != nil {
 						logrus.Errorf("redis lset error: %s %v", inst, err)
 					}
@@ -203,10 +212,13 @@ func (r *RealMd) startQuote() {
 	r.q.RegOnRspUserLogin(func(login *goctp.RspUserLoginField, info *goctp.RspInfoField) {
 		logrus.Infoln("quote login:", info)
 		// r.q.ReqSubscript("au2012")
-		for inst := range r.t.Instruments {
-			r.q.ReqSubscript(inst)
-		}
-		logrus.Infof("subscript instrument count: %d", len(r.t.Instruments))
+		i := 0
+		r.t.Instruments.Range(func(k, v interface{}) bool {
+			r.q.ReqSubscript(k.(string))
+			i++
+			return true
+		})
+		logrus.Infof("subscript instrument count: %d", i)
 		r.waitLogin.Done()
 	})
 	r.q.RegOnTick(r.onTick)
@@ -243,6 +255,31 @@ func (r *RealMd) startTrade() {
 	r.t.RegOnErrRtnOrder(func(field *goctp.OrderField, info *goctp.RspInfoField) {
 		logrus.Infof("%v\n", info)
 	})
+	r.t.RegOnRtnInstrumentStatus(func(field *goctp.InstrumentStatus) {
+		if field.InstrumentStatus == goctp.InstrumentStatusContinous {
+			return
+		}
+		// 进入非交易状态:删除对应时间的数据
+		go func(pid, stopTime string) {
+			time.Sleep(1 * time.Second)
+			r.t.Instruments.Range(func(k, v interface{}) bool {
+				if strings.Compare(v.(goctp.InstrumentField).ProductID, pid) == 0 {
+					// 取最后一个K线数据
+					if jsonMin, err := r.rdb.RPop(r.ctx, k.(string)).Result(); err == nil {
+						var min = make(map[string]interface{})
+						if err := json.Unmarshal([]byte(jsonMin), &min); err == nil {
+							// 时间不为结算时间
+							if strings.Compare(strings.Split(min["_id"].(string), " ")[1], stopTime) != 0 {
+								// 重新将数据放回序列
+								r.rdb.RPush(r.ctx, k.(string), jsonMin)
+							}
+						}
+					}
+				}
+				return true
+			})
+		}(field.InstrumentID, field.EnterTime)
+	})
 	r.t.ReqConnect(r.tradeFront)
 }
 
@@ -261,14 +298,16 @@ func (r *RealMd) Run() {
 		var cntNotClose = 0
 		var cntTrading = 0
 		time.Sleep(1 * time.Minute) // 每分钟判断一次
-		for _, status := range r.t.InstrumentStatuss {
-			if status != goctp.InstrumentStatusClosed {
+		r.t.InstrumentStatuss.Range(func(k, v interface{}) bool {
+			status := v.(goctp.InstrumentStatus)
+			if status.InstrumentStatus != goctp.InstrumentStatusClosed {
 				cntNotClose++
 			}
-			if status == goctp.InstrumentStatusContinous {
+			if status.InstrumentStatus == goctp.InstrumentStatusContinous {
 				cntTrading++
 			}
-		}
+			return true
+		})
 		// 全关闭 or 3点前全都为非交易状态
 		if cntNotClose == 0 {
 			// 保存分钟数据到pg

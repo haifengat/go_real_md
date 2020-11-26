@@ -5,7 +5,7 @@ go 1.14
 require (
 	github.com/fastly/go-utils v0.0.0-20180712184237-d95a45783239 // indirect
 	github.com/go-redis/redis/v8 v8.4.0
-	github.com/haifengat/goctp v0.0.5
+	github.com/haifengat/goctp v0.0.7
 	github.com/jehiah/go-strftime v0.0.0-20171201141054-1d33003b3869 // indirect
 	github.com/jonboulle/clockwork v0.2.2 // indirect
 	github.com/lestrrat/go-envload v0.0.0-20180220120943-6ed08b54a570 // indirect

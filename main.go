@@ -7,7 +7,6 @@ import (
 	"realmd/src"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -39,7 +38,6 @@ func main() {
 	readCalendar()
 	// 7*24
 	curDate := time.Now().Format("20060102")
-	var wgTradingPause sync.WaitGroup // 等待交易停止
 	for i, day := range tradingDays {
 		cmp := strings.Compare(day, curDate)
 		if cmp == 0 { //当前为交易日
@@ -56,9 +54,8 @@ func main() {
 					logrus.Error("接口生成错误:", err)
 					return
 				}
-				md.Run() // 交易所关闭后 or 夜盘结束 退出
 				logrus.Info("waiting for trading close...")
-				wgTradingPause.Wait()
+				md.Run() // 交易所关闭后 or 夜盘结束 退出
 			}
 			// 有夜盘(下一交易日在当前日的3天(含)内) ==> 等待夜盘开启
 			if cur, _ := time.Parse("20060102", curDate); strings.Compare(tradingDays[i+1], cur.AddDate(0, 0, 3).Format("20060102")) > 0 {
@@ -76,9 +73,8 @@ func main() {
 				logrus.Error("接口生成错误:", err)
 				return
 			}
-			md.Run() // 交易所关闭后 or 夜盘结束 退出
 			logrus.Info("waiting for trading night close...")
-			wgTradingPause.Wait()
+			md.Run() // 交易所关闭后 or 夜盘结束 退出
 			curDate = time.Now().Format("20060102")
 		} else if cmp > 0 { // 不为交易日
 			// 等待下一交易日日的 08:30:00
