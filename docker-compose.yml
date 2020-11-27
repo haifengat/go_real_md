@@ -2,7 +2,7 @@ version: "3.7"
 services:
     # 启动: docker-compose --compatibility up -d
     realmd:
-        image: haifengat/go_real_md:20201124
+        image: haifengat/go_real_md:20201126
         container_name: realmd
         restart: always
         environment:

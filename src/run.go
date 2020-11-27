@@ -261,17 +261,17 @@ func (r *RealMd) startTrade() {
 		}
 		// 进入非交易状态:删除对应时间的数据
 		go func(pid, stopTime string) {
-			time.Sleep(1 * time.Second)
+			time.Sleep(5 * time.Second) // 给出足够的时间,让数据入库
 			r.t.Instruments.Range(func(k, v interface{}) bool {
 				if strings.Compare(v.(goctp.InstrumentField).ProductID, pid) == 0 {
 					// 取最后一个K线数据
-					if jsonMin, err := r.rdb.RPop(r.ctx, k.(string)).Result(); err == nil {
+					if jsonMin, err := r.rdb.LRange(r.ctx, k.(string), -1, -1).Result(); err == nil && len(jsonMin) > 0 {
 						var min = make(map[string]interface{})
-						if err := json.Unmarshal([]byte(jsonMin), &min); err == nil {
-							// 时间不为结算时间
-							if strings.Compare(strings.Split(min["_id"].(string), " ")[1], stopTime) != 0 {
-								// 重新将数据放回序列
-								r.rdb.RPush(r.ctx, k.(string), jsonMin)
+						if err := json.Unmarshal([]byte(jsonMin[0]), &min); err == nil {
+							// 时间为结束时间
+							if strings.Compare(strings.Split(min["_id"].(string), " ")[1], stopTime) == 0 {
+								// 删除此分钟的数据
+								r.rdb.RPop(r.ctx, k.(string))
 							}
 						}
 					}
@@ -315,6 +315,7 @@ func (r *RealMd) Run() {
 			if db, err := sql.Open("postgres", pgMin); err == nil {
 				// 退出时关闭
 				defer db.Close()
+				logrus.Info("当前交易日已收盘,redis分钟数据入postgres库.")
 				if keys := r.rdb.Keys(r.ctx, "*"); keys.Err() == nil {
 					insts, _ := keys.Result()
 					sqlStr := `INSERT INTO future.future_min ("DateTime", "Instrument", "Open", "High", "Low", "Close", "Volume", "OpenInterest", "TradingDay") VALUES('%s', '%s', %.4f, %.4f, %.4f, %.4f, %d, %.4f, '%s');`
@@ -342,6 +343,7 @@ func (r *RealMd) Run() {
 			break
 		}
 		if time.Now().Hour() <= 3 && cntTrading == 0 {
+			logrus.Info("夜盘结束!")
 			break
 		}
 	}

@@ -32,4 +32,12 @@ go run main.go
 # 先编码再做镜像(要用centos基础镜像)
 go build -o realmd
 docker build -t haifengat/go_real_md:`date +%Y%m%d` .
+# hub.docker.com
+docker push haifengat/go_real_md:`date +%Y%m%d` .
+# harbor
+docker tag haifengat/go_real_md:`date +%Y%m%d` harbor.do.io/haifengat/go_real_md:`date +%Y%m%d` && docker push harbor.do.io/haifengat/go_real_md:`date +%Y%m%d`
+# aliyun
+docker login --username=hubert28@qq.com registry-vpc.cn-shanghai.aliyuncs.com && \
+docker tag haifengat/go_real_md:`date +%Y%m%d` registry-vpc.cn-shanghai.aliyuncs.com/haifengat/go_real_md:`date +%Y%m%d` \
+&& docker push registry-vpc.cn-shanghai.aliyuncs.com/haifengat/go_real_md:`date +%Y%m%d`
 ```
