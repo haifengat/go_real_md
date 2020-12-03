@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -13,25 +14,23 @@ import (
 
 	"github.com/haifengat/goctp"
 	ctp "github.com/haifengat/goctp/lnx"
+	_ "github.com/lib/pq" // postgres
 	"github.com/sirupsen/logrus"
 
 	"github.com/go-redis/redis/v8"
 
 	"database/sql"
-
-	_ "github.com/lib/pq" // postgres
 )
 
 // RealMd 实时行情
 type RealMd struct {
 	tradeFront, quoteFront, loginInfo, brokerID, investorID, password, appID, authCode string
 
-	mapInstMin   sync.Map
-	mapPushedMin sync.Map
+	mapInstMin   sync.Map // 合约:map[string]interface{},最后1分钟数据
+	mapPushedMin sync.Map // 合约:分钟,用于判断此分钟是否生成过
 
-	rdb        *redis.Client // redis 连接
-	expireTime time.Time     // 数据过期时间,登录后赋值
-	ctx        context.Context
+	rdb *redis.Client   // redis 连接
+	ctx context.Context // redis 上下文
 
 	actionDay      string // 交易日起始交易日期
 	actionDayNight string // 交易日起始交易日期-下一日
@@ -110,15 +109,18 @@ func (r *RealMd) runTick(bsTick []byte) {
 	json.Unmarshal(bsTick, &mapTick)
 	// strconv.ParseFloat(fmt.Sprintf("%.2f", 9.815), 64)  sprintf四舍五入采用 奇舍偶入的规则
 	inst, updateTime, last, volume, oi := mapTick["InstrumentID"].(string), mapTick["UpdateTime"].(string), mapTick["LastPrice"].(float64), int(mapTick["Volume"].(float64)), mapTick["OpenInterest"].(float64)
-	// 合约状态过滤
-	if info, ok := r.t.Instruments.Load(inst); ok {
-		pid := info.(goctp.InstrumentField).ProductID
-		if s, ok := r.t.InstrumentStatuss.Load(pid); ok {
-			if s.(goctp.InstrumentStatus).InstrumentStatus != goctp.InstrumentStatusContinous {
-				return
-			}
-		}
+	if last >= math.MaxFloat32 {
+		return
 	}
+	// 合约状态过滤 == 会造成入库延时
+	// if info, ok := r.t.Instruments.Load(inst); ok {
+	// 	pid := info.(goctp.InstrumentField).ProductID
+	// 	if s, ok := r.t.InstrumentStatuss.Load(pid); ok {
+	// 		if s.(goctp.InstrumentStatus).InstrumentStatus != goctp.InstrumentStatusContinous {
+	// 			return
+	// 		}
+	// 	}
+	// }
 	last, _ = strconv.ParseFloat(fmt.Sprintf("%.4f", last), 64)
 	// 取tick的分钟构造当前分钟时间
 	if r.actionDay == "" { // 取第一个actionday不为空的数据
@@ -154,7 +156,7 @@ func (r *RealMd) runTick(bsTick []byte) {
 		mapMin["Volume"] = 0
 		mapMin["preVol"] = volume
 		mapMin["OpenInterest"] = oi
-		mapMin["TradingDay"] = mapTick["TradingDay"]
+		mapMin["TradingDay"] = r.t.TradingDay // mapTick["TradingDay"]
 	} else {
 		mapMin = obj.(map[string]interface{})
 		if mapMin["_id"] != minDateTime {
@@ -189,8 +191,6 @@ func (r *RealMd) runTick(bsTick []byte) {
 					err := r.rdb.RPush(r.ctx, inst, jsMin).Err()
 					if err != nil {
 						logrus.Errorf("redis rpush error: %s %v", inst, err)
-					} else if !ok { // 合约首次记录
-						r.rdb.ExpireAt(r.ctx, inst, r.expireTime)
 					}
 				} else {
 					err := r.rdb.LSet(r.ctx, inst, -1, jsMin).Err()
@@ -212,7 +212,22 @@ func (r *RealMd) startQuote() {
 	r.q.RegOnRspUserLogin(func(login *goctp.RspUserLoginField, info *goctp.RspInfoField) {
 		logrus.Infoln("quote login:", info)
 		// r.q.ReqSubscript("au2012")
+		r.t.Instruments.Range(func(k, v interface{}) bool {
+			// 取最新K线数据
+			inst := k.(string)
+			if jsonMin, err := r.rdb.LRange(r.ctx, inst, -1, -1).Result(); err == nil && len(jsonMin) > 0 {
+				var min = make(map[string]interface{})
+				if json.Unmarshal([]byte(jsonMin[0]), &min) == nil {
+					min["preVol"] = int(min["preVol"].(float64))
+					min["Volume"] = int(min["Volume"].(float64))
+					r.mapInstMin.Store(inst, min)
+					r.mapPushedMin.Store(inst, min["_id"])
+				}
+			}
+			return true
+		})
 		i := 0
+		// 订阅行情
 		r.t.Instruments.Range(func(k, v interface{}) bool {
 			r.q.ReqSubscript(k.(string))
 			i++
@@ -238,14 +253,14 @@ func (r *RealMd) startTrade() {
 	r.t.RegOnRspUserLogin(func(login *goctp.RspUserLoginField, info *goctp.RspInfoField) {
 		logrus.Infof("trade login info: %v", info)
 		if info.ErrorID == 0 {
-			// 过期时间
-			d, _ := time.ParseInLocation("20060102", login.TradingDay, time.Local) // time.local保持时区一致
-			t, _ := time.ParseDuration("18h30m")                                   // 交易日的 18:30 过期
-			exTime := d.Add(t)
-			rdsTime, _ := r.rdb.Time(r.ctx).Result()
-			// 根据redis服务器时间计算出过期时间,避免时间差异导致数据直接过期
-			r.expireTime = rdsTime.Add(exTime.Sub(time.Now()))
-			logrus.Infof("redis time now is: %v, expire time is : %v", rdsTime, r.expireTime)
+			// 过期时间(1128采用收后数据入pg代替)
+			// d, _ := time.ParseInLocation("20060102", login.TradingDay, time.Local) // time.local保持时区一致
+			// t, _ := time.ParseDuration("18h30m")                                   // 交易日的 18:30 过期
+			// exTime := d.Add(t)
+			// rdsTime, _ := r.rdb.Time(r.ctx).Result()
+			// // 根据redis服务器时间计算出过期时间,避免时间差异导致数据直接过期
+			// r.expireTime = rdsTime.Add(exTime.Sub(time.Now()))
+			// logrus.Infof("redis time now is: %v, expire time is : %v", rdsTime, r.expireTime)
 			go r.startQuote()
 		}
 	})
@@ -283,8 +298,87 @@ func (r *RealMd) startTrade() {
 	r.t.ReqConnect(r.tradeFront)
 }
 
+func (r *RealMd) inserrtPg() (err error) {
+	pgMin := os.Getenv("pgMin")
+	var db *sql.DB
+	if db, err = sql.Open("postgres", pgMin); err != nil {
+		logrus.Error("pgMin 配置错误:", err)
+		return
+	}
+	// 退出时关闭
+	defer db.Close()
+	time.Sleep(10 * time.Second) // 给数据入库留出时间
+	logrus.Info("当前交易日已收盘,redis分钟数据入postgres库.")
+	var keys = []string{}
+	if keys, err = r.rdb.Keys(r.ctx, "*").Result(); err != nil {
+		logrus.Error("取redis 合约错误：", err)
+		return
+	}
+	// 使用事务
+	var txn *sql.Tx
+	if txn, err = db.Begin(); err != nil {
+		logrus.Error("begin 错误:", err)
+		return
+	}
+	i := 0
+	defer func(i *int) {
+		if err = txn.Commit(); err != nil {
+			txn.Rollback()
+			logrus.Error("分钟入库tnx.commit错误:", err)
+		} else {
+			logrus.Info("入库:", i)
+		}
+	}(&i)
+	// 使用copy
+	// var stmt *sql.Stmt
+	// if stmt, err = txn.Prepare(pq.CopyInSchema("future", "future_min", "DateTime", "Instrument", "Open", "High", "Low", "Close", "Volume", "OpenInterest", "TradingDay")); err != nil {
+	// 	logrus.Error("prepare 错误:", err)
+	// 	return
+	// }
+	for _, inst := range keys {
+		var mins = []string{}
+		if mins, err = r.rdb.LRange(r.ctx, inst, 0, -1).Result(); err != nil {
+			logrus.Error("取redis数据错误:", inst, err)
+			return
+		}
+		for _, bsMin := range mins {
+			var bar = make(map[string]interface{})
+			if err = json.Unmarshal([]byte(bsMin), &bar); err != nil {
+				logrus.Error("解析bar错误:", bar, " ", err)
+				continue
+			}
+			// 过滤空指针的数据(double.MAX)
+			if bar["High"].(float64) >= math.MaxFloat32 {
+				continue
+			}
+			// 入库
+			sqlIns := fmt.Sprintf(`INSERT INTO future.future_min ("DateTime", "Instrument", "Open", "High", "Low", "Close", "Volume", "OpenInterest", "TradingDay") VALUES('%s', '%s', %.6f, %.6f, %.6f, %.6f, %.0f, %.6f, '%s')`, bar["_id"], inst, bar["Open"], bar["High"], bar["Low"], bar["Close"], bar["Volume"], bar["OpenInterest"], bar["TradingDay"])
+			if _, err = txn.Exec(sqlIns); err != nil {
+				logrus.Error("入库错误:", sqlIns)
+				continue
+			}
+			// if _, err = stmt.Exec(bar["_id"], inst, bar["Open"], bar["High"], bar["Low"], bar["Close"], int(bar["Volume"].(float64)), bar["OpenInterest"], bar["TradingDay"]); err != nil {
+			// 	logrus.Errorf("分钟入库smtp.exec(fields)错误: %d, %s, %v, %v", i, inst, bar, err)
+			// 	return
+			// }
+			i++
+		}
+	}
+	// if _, err = stmt.Exec(); err != nil {
+	// 	logrus.Error("分钟入库smtp.exec错误:", err)
+	// 	return
+	// }
+	// if err = stmt.Close(); err != nil {
+	// 	logrus.Error("分钟入库smtp.close错误:", err)
+	// 	return
+	// }
+	return
+}
+
 // Run 运行
 func (r *RealMd) Run() {
+	// r.inserrtPg()
+	// return
 	r.waitLogin.Add(1)
 	go r.startTrade()
 	logrus.Info("waiting for trade api logged and quote subscripted.")
@@ -310,36 +404,8 @@ func (r *RealMd) Run() {
 		})
 		// 全关闭 or 3点前全都为非交易状态
 		if cntNotClose == 0 {
-			// 保存分钟数据到pg
-			pgMin := os.Getenv("pgMin")
-			if db, err := sql.Open("postgres", pgMin); err == nil {
-				// 退出时关闭
-				defer db.Close()
-				logrus.Info("当前交易日已收盘,redis分钟数据入postgres库.")
-				if keys := r.rdb.Keys(r.ctx, "*"); keys.Err() == nil {
-					insts, _ := keys.Result()
-					sqlStr := `INSERT INTO future.future_min ("DateTime", "Instrument", "Open", "High", "Low", "Close", "Volume", "OpenInterest", "TradingDay") VALUES('%s', '%s', %.4f, %.4f, %.4f, %.4f, %d, %.4f, '%s');`
-					// 开启入库事务
-					tx, _ := db.Begin()
-					for _, inst := range insts {
-						if mins, err := r.rdb.LRange(r.ctx, inst, 0, -1).Result(); err == nil {
-							for _, bytes := range mins {
-								var bar = make(map[string]interface{})
-								if err := json.Unmarshal([]byte(bytes), &bar); err == nil {
-									s := fmt.Sprintf(sqlStr, bar["_id"], inst, bar["Open"], bar["High"], bar["Low"], bar["Close"], bar["Volume"], bar["OpenInterest"], bar["TradingDay"])
-									tx.Exec(s)
-								}
-							}
-						}
-					}
-					if err = tx.Commit(); err != nil {
-						tx.Rollback()
-						logrus.Error("分钟数据入库错误：", err)
-					}
-				} else {
-					logrus.Error("取redis 合约错误：", err)
-				}
-			}
+			r.inserrtPg()        // 保存分钟数据到pg
+			r.rdb.FlushDB(r.ctx) // 清除当日数据
 			break
 		}
 		if time.Now().Hour() <= 3 && cntTrading == 0 {

@@ -36,6 +36,9 @@ func readCalendar() {
 
 func main() {
 	readCalendar()
+	// r, _ := src.NewRealMd()
+	// r.Run()
+	// return
 	// 7*24
 	curDate := time.Now().Format("20060102")
 	for i, day := range tradingDays {
@@ -47,7 +50,7 @@ func main() {
 				time.Sleep(startTime.Sub(time.Now()))
 			}
 			// 15:00前开启
-			if startTime, _ := time.ParseInLocation("20060102 15:04:05", fmt.Sprintf("%s 15:45:00", curDate), time.Local); time.Now().Before(startTime) {
+			if startTime, _ := time.ParseInLocation("20060102 15:04:05", fmt.Sprintf("%s 15:00:00", curDate), time.Local); time.Now().Before(startTime) {
 				var md *src.RealMd
 				var err error
 				if md, err = src.NewRealMd(); err != nil {
