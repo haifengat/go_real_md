@@ -33,7 +33,7 @@ go run main.go
 go build -o realmd
 docker build -t haifengat/go_real_md:`date +%Y%m%d` .
 # hub.docker.com
-docker push haifengat/go_real_md:`date +%Y%m%d` .
+docker push haifengat/go_real_md:`date +%Y%m%d`
 # harbor
 docker tag haifengat/go_real_md:`date +%Y%m%d` harbor.do.io/haifengat/go_real_md:`date +%Y%m%d` && docker push harbor.do.io/haifengat/go_real_md:`date +%Y%m%d`
 # aliyun
