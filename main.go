@@ -36,9 +36,9 @@ func readCalendar() {
 
 func main() {
 	readCalendar()
-	r, _ := src.NewRealMd()
-	r.Run()
-	return
+	// r, _ := src.NewRealMd()
+	// r.Run()
+	// return
 	// 7*24
 	curDate := time.Now().Format("20060102")
 	for i, day := range tradingDays {
