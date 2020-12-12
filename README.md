@@ -41,3 +41,10 @@ docker login --username=hubert28@qq.com registry-vpc.cn-shanghai.aliyuncs.com &&
 docker tag haifengat/go_real_md:`date +%Y%m%d` registry-vpc.cn-shanghai.aliyuncs.com/haifengat/go_real_md:`date +%Y%m%d` \
 && docker push registry-vpc.cn-shanghai.aliyuncs.com/haifengat/go_real_md:`date +%Y%m%d`
 ```
+
+## 附
+### 行情订阅后收不到ontick响应
+原因：交易所状态处理问题
+处理：已修复
+
+### 接口断开重连，收不到login响应
