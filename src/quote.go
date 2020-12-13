@@ -49,11 +49,6 @@ func (r *RealMd) runTick(bsTick []byte) {
 	} else if hour >= 17 {
 		action = r.actionDay
 	}
-	// 行情结束价保存
-	avg := mapTick["AveragePrice"].(float64)
-	if avg < math.MaxFloat32 && avg > 0 {
-		r.rdb.HSet(r.ctx, "avg", inst, avg)
-	}
 
 	minDateTime := fmt.Sprintf("%s-%s-%s %s:00", action[0:4], action[4:6], action[6:], updateTime[0:5])
 
