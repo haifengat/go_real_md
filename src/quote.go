@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/haifengat/goctp"
 	"github.com/sirupsen/logrus"
@@ -54,61 +55,80 @@ func (r *RealMd) runTick(bsTick []byte) {
 
 	r.showTime = minDateTime
 
-	mapMin := make(map[string]interface{})
-	// 合约
-	if obj, loaded := r.mapInstMin.Load(inst); !loaded {
+	bar := Bar{}
+	// 合约+时间
+	key := fmt.Sprintf("%s_%s", inst, minDateTime)
+	obj, _ := r.instMinTicks.LoadOrStore(key, 0)
+	tickCnt := obj.(int)
+	tickCnt++
+	r.instMinTicks.Store(key, tickCnt)
+
+	if obj, loaded := r.instLastMin.Load(inst); !loaded {
 		// 首次赋值
-		mapMin["_id"] = minDateTime
-		mapMin["Open"], mapMin["High"], mapMin["Low"], mapMin["Close"] = last, last, last, last
-		mapMin["Volume"] = 0
-		mapMin["preVol"] = volume
-		mapMin["OpenInterest"] = oi
-		mapMin["TradingDay"] = r.t.TradingDay // mapTick["TradingDay"]
+		bar.ID = minDateTime
+		bar.Open, bar.High, bar.Close, bar.Low = last, last, last, last
+		bar.Volume = 0
+		bar.PreVol = volume
+		bar.OpenInterest = oi
+		bar.TradingDay = r.t.TradingDay
 	} else {
-		mapMin = obj.(map[string]interface{})
-		if mapMin["_id"] != minDateTime {
-			mapMin["_id"] = minDateTime
-			mapMin["Open"], mapMin["High"], mapMin["Low"], mapMin["Close"] = last, last, last, last
+		bar = obj.(Bar)
+		if strings.Compare(bar.ID, minDateTime) != 0 {
+			bar.ID = minDateTime
+			bar.Open, bar.High, bar.Close, bar.Low = last, last, last, last
 			// 首个tick不计算成交量, 否则会导致隔夜的早盘第一个分钟的成交量非常大
-			mapMin["preVol"] = mapMin["preVol"].(int) + mapMin["Volume"].(int)
-			mapMin["Volume"] = volume - mapMin["preVol"].(int)
-			// mapMin["preVol"] = volume // 如何将前 1 tick数据保存?
-			mapMin["OpenInterest"] = oi
+			bar.PreVol = bar.PreVol + bar.Volume
+			bar.Volume = volume - bar.PreVol
+			bar.OpenInterest = oi
 		} else { // 分钟数据更新
 			const E = 0.000001
-			if last-mapMin["High"].(float64) > E {
-				mapMin["High"] = last
+			if last-bar.High > E {
+				bar.High = last
 			}
-			if last-mapMin["Low"].(float64) < E {
-				mapMin["Low"] = last
+			if last-bar.Low < E {
+				bar.Low = last
 			}
-			mapMin["Close"] = last
-			mapMin["Volume"] = volume - mapMin["preVol"].(int)
-			mapMin["OpenInterest"] = oi
+			bar.Close = last
+			bar.Volume = volume - bar.PreVol
+			bar.OpenInterest = oi
 
 			// 此时间是否 push过
-			if jsMin, err := json.Marshal(mapMin); err != nil {
+			if jsMin, err := json.Marshal(bar); err != nil {
 				logrus.Errorf("map min to json error: %v", err)
 			} else {
-				// 发布分钟数据
-				r.rdb.Publish(r.ctx, "md."+inst, jsMin)
 				// 当前分钟未被记录
-				if curMin, ok := r.mapPushedMin.LoadOrStore(inst, minDateTime); !ok || curMin != minDateTime {
-					r.mapPushedMin.Store(inst, minDateTime)
+				if tickCnt == 3 { // 控制分钟最小tick数量
 					err := r.rdb.RPush(r.ctx, inst, jsMin).Err()
 					if err != nil {
 						logrus.Errorf("redis rpush error: %s %v", inst, err)
 					}
-				} else {
+					// 发布分钟数据
+					r.rdb.Publish(r.ctx, "md."+inst, jsMin)
+				} else if tickCnt > 3 {
 					err := r.rdb.LSet(r.ctx, inst, -1, jsMin).Err()
 					if err != nil {
 						logrus.Errorf("redis lset error: %s %v", inst, err)
 					}
+					// 发布分钟数据
+					r.rdb.Publish(r.ctx, "md."+inst, jsMin)
 				}
 			}
 		}
 	}
-	r.mapInstMin.Store(inst, mapMin)
+	r.instLastMin.Store(inst, bar)
+}
+
+// Bar 分钟K线
+type Bar struct {
+	ID           string `json:"_id"`
+	TradingDay   string
+	Open         float64
+	High         float64
+	Low          float64
+	Close        float64
+	Volume       int
+	OpenInterest float64
+	PreVol       int `json:"preVol"`
 }
 
 func (r *RealMd) onMdConnected() {
@@ -123,12 +143,9 @@ func (r *RealMd) onMdLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFi
 		// 取最新K线数据
 		inst := k.(string)
 		if jsonMin, err := r.rdb.LRange(r.ctx, inst, -1, -1).Result(); err == nil && len(jsonMin) > 0 {
-			var min = make(map[string]interface{})
-			if json.Unmarshal([]byte(jsonMin[0]), &min) == nil {
-				min["preVol"] = int(min["preVol"].(float64))
-				min["Volume"] = int(min["Volume"].(float64))
-				r.mapInstMin.Store(inst, min)
-				r.mapPushedMin.Store(inst, min["_id"])
+			bar := Bar{}
+			if json.Unmarshal([]byte(jsonMin[0]), &bar) == nil {
+				r.instLastMin.Store(inst, bar)
 			}
 		}
 		return true

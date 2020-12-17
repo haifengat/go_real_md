@@ -30,8 +30,9 @@ func (r *RealMd) onLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFiel
 	logrus.Infof("trade login info: %v", info)
 	if info.ErrorID == 0 {
 		r.actionDay = "" // 初始化
-		r.mapInstMin = sync.Map{}
-		r.mapPushedMin = sync.Map{}
+		r.instLastMin = sync.Map{}
+		r.instMinTicks = sync.Map{}
+		// r.minPushed = sync.Map{}
 		// r.mapInstrumentStatus = sync.Map{} // 会导致收不到行情：登录事件时交易状态已更新
 		// 初始化 actionday
 		if t, err := time.Parse("20060102", login.TradingDay); err == nil {
@@ -77,10 +78,10 @@ func (r *RealMd) onRtnStatus(field *goctp.InstrumentStatus) {
 			if field.InstrumentStatus != goctp.InstrumentStatusContinous {
 				// 取最后一个K线数据，如果时间为结束时间，则删除
 				if jsonMin, err := r.rdb.LRange(r.ctx, key.(string), -1, -1).Result(); err == nil && len(jsonMin) > 0 {
-					var min = make(map[string]interface{})
-					if err := json.Unmarshal([]byte(jsonMin[0]), &min); err == nil {
+					var bar = Bar{}
+					if err := json.Unmarshal([]byte(jsonMin[0]), &bar); err == nil {
 						// 时间为结束时间
-						if strings.Compare(strings.Split(min["_id"].(string), " ")[1], field.EnterTime) == 0 {
+						if strings.Compare(strings.Split(bar.ID, " ")[1], field.EnterTime) == 0 {
 							// 删除此分钟的数据
 							r.rdb.RPop(r.ctx, key.(string))
 						}

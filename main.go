@@ -45,7 +45,7 @@ func main() {
 		cmp := strings.Compare(day, curDate)
 		if cmp == 0 { //当前为交易日
 			// 8:45之前等待
-			if startTime, _ := time.ParseInLocation("20060102 15:04:05", fmt.Sprintf("%s 08:05:00", curDate), time.Local); time.Now().Before(startTime) {
+			if startTime, _ := time.ParseInLocation("20060102 15:04:05", fmt.Sprintf("%s 08:45:00", curDate), time.Local); time.Now().Before(startTime) {
 				logrus.Infof("waiting for trading start at %v", startTime)
 				time.Sleep(startTime.Sub(time.Now()))
 			}
@@ -82,7 +82,7 @@ func main() {
 			nextDay, _ := time.Parse("20060102", day)
 			nextDay = nextDay.Add(8 * time.Hour).Add(30 * time.Minute)
 			logrus.Infof("wait for next tradingtime %s.", nextDay.Format("20060102 15:04:05"))
-			time.Sleep(nextDay.Sub(time.Now()))
+			time.Sleep(nextDay.Sub(time.Now())) // 周末后，卡在此处
 			curDate = time.Now().Format("20060102")
 		}
 	}

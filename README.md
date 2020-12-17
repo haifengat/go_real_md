@@ -52,13 +52,6 @@ loginInfo|9999/008107/1/simnow_client_test/0000000000000000|登录配置格式 b
 redisAddr|127.0.0.1:6379|redis库配置host:port
 pgMin|127.0.0.1:5432|分钟pg库配置
 
-### 测试
-tradeFront=tcp://180.168.146.187:10130 quoteFront=tcp://180.168.146.187:10131 \
-loginInfo="9999/008107/1/simnow_client_test/0000000000000000" \
-redisAddr=172.19.129.98:16379 \
-pgMin=postgresql://postgres:12345@172.19.129.98:20032/postgres?sslmode=disable \
-go run main.go
-
 ### 生成镜像
 ```bash
 # 先编码再做镜像(要用centos基础镜像)
@@ -78,4 +71,13 @@ docker tag haifengat/go_real_md:`date +%Y%m%d` registry-vpc.cn-shanghai.aliyuncs
 处理：已修复
 
 ### 接口断开重连，收不到login响应
-待处理
+原因：猜测为匿名函数被回收
+解决：实际函数替代匿名函数
+
+### 收盘时间的tick仍被处理
+双tick仍无法避免，即15:00:00时收到2两个tick。例：y2105 20201214
+解决：3tick
+
+### concurrent map read and map write
+原因是mapMin变量用map[string]interface{}保存分钟数据，在lastInstMin读取时冲突
+解决：改为Bar{}
