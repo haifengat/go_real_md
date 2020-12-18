@@ -55,13 +55,7 @@ func (r *RealMd) runTick(bsTick []byte) {
 
 	r.showTime = minDateTime
 
-	bar := Bar{}
-	// 合约+时间
-	key := fmt.Sprintf("%s_%s", inst, minDateTime)
-	obj, _ := r.instMinTicks.LoadOrStore(key, 0)
-	tickCnt := obj.(int)
-	tickCnt++
-	r.instMinTicks.Store(key, tickCnt)
+	bar := &Bar{}
 
 	if obj, loaded := r.instLastMin.Load(inst); !loaded {
 		// 首次赋值
@@ -71,15 +65,16 @@ func (r *RealMd) runTick(bsTick []byte) {
 		bar.PreVol = volume
 		bar.OpenInterest = oi
 		bar.TradingDay = r.t.TradingDay
+		bar.Ticks = 1
 	} else {
-		bar = obj.(Bar)
+		bar = obj.(*Bar)
 		if strings.Compare(bar.ID, minDateTime) != 0 {
 			bar.ID = minDateTime
 			bar.Open, bar.High, bar.Close, bar.Low = last, last, last, last
-			// 首个tick不计算成交量, 否则会导致隔夜的早盘第一个分钟的成交量非常大
 			bar.PreVol = bar.PreVol + bar.Volume
 			bar.Volume = volume - bar.PreVol
 			bar.OpenInterest = oi
+			bar.Ticks = 1
 		} else { // 分钟数据更新
 			const E = 0.000001
 			if last-bar.High > E {
@@ -93,18 +88,19 @@ func (r *RealMd) runTick(bsTick []byte) {
 			bar.OpenInterest = oi
 
 			// 此时间是否 push过
-			if jsMin, err := json.Marshal(bar); err != nil {
+			if jsMin, err := json.Marshal(*bar); err != nil {
 				logrus.Errorf("map min to json error: %v", err)
-			} else {
+			} else if bar.Volume > 0 { // 过滤成交量==0的数据
+				bar.Ticks++
 				// 当前分钟未被记录
-				if tickCnt == 3 { // 控制分钟最小tick数量
+				if bar.Ticks == 3 { // 控制分钟最小tick数量；避免盘歇的数据
 					err := r.rdb.RPush(r.ctx, inst, jsMin).Err()
 					if err != nil {
 						logrus.Errorf("redis rpush error: %s %v", inst, err)
 					}
 					// 发布分钟数据
 					r.rdb.Publish(r.ctx, "md."+inst, jsMin)
-				} else if tickCnt > 3 {
+				} else if bar.Ticks > 3 {
 					err := r.rdb.LSet(r.ctx, inst, -1, jsMin).Err()
 					if err != nil {
 						logrus.Errorf("redis lset error: %s %v", inst, err)
@@ -129,6 +125,7 @@ type Bar struct {
 	Volume       int
 	OpenInterest float64
 	PreVol       int `json:"preVol"`
+	Ticks        int `json:ticks` // 此分钟的tick数量 >3 才会被记录和分发
 }
 
 func (r *RealMd) onMdConnected() {
@@ -143,8 +140,8 @@ func (r *RealMd) onMdLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFi
 		// 取最新K线数据
 		inst := k.(string)
 		if jsonMin, err := r.rdb.LRange(r.ctx, inst, -1, -1).Result(); err == nil && len(jsonMin) > 0 {
-			bar := Bar{}
-			if json.Unmarshal([]byte(jsonMin[0]), &bar) == nil {
+			var bar = &Bar{}
+			if json.Unmarshal([]byte(jsonMin[0]), bar) == nil {
 				r.instLastMin.Store(inst, bar)
 			}
 		}

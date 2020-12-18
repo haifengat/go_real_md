@@ -81,3 +81,6 @@ docker tag haifengat/go_real_md:`date +%Y%m%d` registry-vpc.cn-shanghai.aliyuncs
 ### concurrent map read and map write
 原因是mapMin变量用map[string]interface{}保存分钟数据，在lastInstMin读取时冲突
 解决：改为Bar{}
+
+###  pq: duplicate key value violates unique constraint "future_min_datetime_instrument
+ticks改用bar.ticks处理

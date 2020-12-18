@@ -24,9 +24,7 @@ import (
 type RealMd struct {
 	tradeFront, quoteFront, loginInfo, brokerID, investorID, password, appID, authCode string
 
-	instMinTicks sync.Map // 同一合约，某一分钟的ticks数量；用于控制是否生成分钟
-	instLastMin  sync.Map // 合约:map[string]interface{},最后1分钟数据
-	// minPushed           sync.Map // 合约:分钟,用于判断此分钟是否生成过
+	instLastMin         sync.Map // 合约:map[string]interface{},最后1分钟数据
 	mapInstrumentStatus sync.Map // 合约交易状态
 
 	rdb *redis.Client   // redis 连接

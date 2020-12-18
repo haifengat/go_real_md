@@ -31,7 +31,6 @@ func (r *RealMd) onLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFiel
 	if info.ErrorID == 0 {
 		r.actionDay = "" // 初始化
 		r.instLastMin = sync.Map{}
-		r.instMinTicks = sync.Map{}
 		// r.minPushed = sync.Map{}
 		// r.mapInstrumentStatus = sync.Map{} // 会导致收不到行情：登录事件时交易状态已更新
 		// 初始化 actionday
