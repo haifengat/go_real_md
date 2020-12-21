@@ -60,7 +60,7 @@ func main() {
 				}
 			}
 			// 有夜盘(下一交易日在当前日的3天(含)内) ==> 等待夜盘开启
-			if cur, _ := time.Parse("20060102", curDate); strings.Compare(tradingDays[i+1], cur.AddDate(0, 0, 3).Format("20060102")) > 0 {
+			if cur, _ := time.ParseInLocation("20060102", curDate, time.Local); strings.Compare(tradingDays[i+1], cur.AddDate(0, 0, 3).Format("20060102")) > 0 {
 				continue
 			}
 			// 20:45:00前一直等待(前有效时间至20:30:00)
@@ -79,7 +79,7 @@ func main() {
 			curDate = time.Now().Format("20060102")
 		} else if cmp > 0 { // 不为交易日
 			// 等待下一交易日日的 08:30:00
-			nextDay, _ := time.Parse("20060102", day)
+			nextDay, _ := time.ParseInLocation("20060102", day, time.Local)
 			nextDay = nextDay.Add(8 * time.Hour).Add(30 * time.Minute)
 			logrus.Infof("wait for next tradingtime %s.", nextDay.Format("20060102 15:04:05"))
 			time.Sleep(nextDay.Sub(time.Now())) // 周末后，卡在此处
