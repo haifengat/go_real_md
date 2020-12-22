@@ -30,8 +30,9 @@ type RealMd struct {
 	rdb *redis.Client   // redis 连接
 	ctx context.Context // redis 上下文
 
-	actionDay     string // 交易日起始交易日期
-	actionDayNext string // 交易日起始交易日期-下一日
+	actionDay     string   // 交易日起始交易日期
+	actionDayNext string   // 交易日起始交易日期-下一日
+	products      []string // 需要接收行情的品种（大写）
 
 	t *ctp.Trade
 	q *ctp.Quote
@@ -92,6 +93,26 @@ func NewRealMd() (*RealMd, error) {
 	if err != nil {
 		logrus.Error(pong, err)
 		return nil, err
+	}
+
+	pgMin := os.Getenv("pgMin")
+	if pgMin == "" {
+		logrus.Warn("未配置 pgMin, 收盘后将不入库！")
+	} else {
+		conn, err := pq.Open(pgMin)
+		if err != nil {
+			logrus.Error("pgMin 配置错误:", err)
+			return nil, err
+		}
+		// 退出时关闭
+		defer conn.Close()
+	}
+
+	tmp = os.Getenv("products")
+	if len(tmp) > 0 {
+		for _, p := range strings.Split(tmp, ",") {
+			r.products = append(r.products, strings.ToUpper(strings.Trim(p, " ")))
+		}
 	}
 
 	r.t = ctp.NewTrade()

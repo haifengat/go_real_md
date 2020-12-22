@@ -158,8 +158,26 @@ func (r *RealMd) onMdLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFi
 		return true
 	})
 	i := 0
+	ps := len(r.products)
 	// 订阅行情
 	r.t.Instruments.Range(func(k, v interface{}) bool {
+		if ps > 0 {
+			// 大写比较
+			p := strings.ToUpper(v.(goctp.InstrumentField).ProductID)
+			if len(p) == 0 { // BUK等组合合约productid为""
+				return true
+			}
+			idx := -1
+			for j, v := range r.products {
+				if strings.Compare(v, p) == 0 {
+					idx = j
+					break
+				}
+			}
+			if idx == -1 { // 不在列表里
+				return true
+			}
+		}
 		r.q.ReqSubscript(k.(string))
 		i++
 		return true

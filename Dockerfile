@@ -7,9 +7,9 @@ WORKDIR /app
 COPY ./realmd ./
 COPY ./lib/*.so ./
 # 交易日历，每年更新一次
-RUN yum install -y wget; \
- wget http://data.haifengat.com/calendar.csv;
-# COPY ./calendar.csv ./
+# RUN yum install -y wget; \
+#  wget http://data.haifengat.com/calendar.csv;
+COPY ./calendar.csv ./
 ENV LD_LIBRARY_PATH /app
 
 #USER app-runner
