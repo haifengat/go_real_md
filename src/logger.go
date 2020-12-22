@@ -5,7 +5,7 @@ import (
 	"path"
 	"time"
 
-	rotates "github.com/lestrrat/go-file-rotatelogs"
+	rotates "github.com/lestrrat-go/file-rotatelogs"
 	"github.com/pkg/errors"
 	"github.com/rifflock/lfshook"
 	logger "github.com/sirupsen/logrus"

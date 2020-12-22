@@ -139,7 +139,8 @@ func (r *RealMd) inserrtPg() (err error) {
 		return
 	}
 	for _, inst := range keys {
-		if inst == "avg" {
+		// 合约过滤
+		if _, ok := r.t.Instruments.Load(inst); !ok {
 			continue
 		}
 		var mins = []string{}
@@ -158,14 +159,9 @@ func (r *RealMd) inserrtPg() (err error) {
 				continue
 			}
 			// 入库
-			// sqlIns := fmt.Sprintf(`INSERT INTO future.future_min ("DateTime", "Instrument", "Open", "High", "Low", "Close", "Volume", "OpenInterest", "TradingDay") VALUES('%s', '%s', %.6f, %.6f, %.6f, %.6f, %.0f, %.6f, '%s')`, bar["_id"], inst, bar["Open"], bar["High"], bar["Low"], bar["Close"], bar["Volume"], bar["OpenInterest"], bar["TradingDay"])
-			// if _, err = txn.Exec(sqlIns); err != nil {
-			// 	logrus.Error("入库错误:", sqlIns, err)
-			// 	continue
-			// }
 			if _, err = stmt.Exec(bar["_id"], inst, bar["Open"], bar["High"], bar["Low"], bar["Close"], int(bar["Volume"].(float64)), bar["OpenInterest"], bar["TradingDay"]); err != nil {
 				logrus.Errorf("分钟入库smtp.exec(fields)错误: %d, %s, %v, %v", i, inst, bar, err)
-				return
+				// return 遇到错误，只提示不处理
 			}
 			i++
 		}

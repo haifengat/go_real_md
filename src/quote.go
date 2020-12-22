@@ -13,6 +13,7 @@ import (
 
 func (r *RealMd) startQuote() {
 	r.q.RegOnFrontConnected(r.onMdConnected)
+	r.q.RegOnFrontDisConnected(r.onMdDisConnected)
 	r.q.RegOnRspUserLogin(r.onMdLogin)
 	r.q.RegOnTick(r.onTick)
 	logrus.Infoln("connected to quote...")
@@ -47,7 +48,7 @@ func (r *RealMd) runTick(bsTick []byte) {
 	hour, _ := strconv.Atoi(updateTime[0:2])
 	if hour <= 3 {
 		action = r.actionDayNext
-	} else if hour >= 17 {
+	} else if hour >= 20 {
 		action = r.actionDay
 	}
 
@@ -68,7 +69,12 @@ func (r *RealMd) runTick(bsTick []byte) {
 		bar.Ticks = 1
 	} else {
 		bar = obj.(*Bar)
-		if strings.Compare(bar.ID, minDateTime) != 0 {
+		minDiff := strings.Compare(minDateTime, bar.ID)
+		// 不处理 <0 的情况
+		if minDiff < 0 {
+			return
+		}
+		if minDiff > 0 {
 			bar.ID = minDateTime
 			bar.Open, bar.High, bar.Close, bar.Low = last, last, last, last
 			bar.PreVol = bar.PreVol + bar.Volume
@@ -125,12 +131,16 @@ type Bar struct {
 	Volume       int
 	OpenInterest float64
 	PreVol       int `json:"preVol"`
-	Ticks        int `json:ticks` // 此分钟的tick数量 >3 才会被记录和分发
+	Ticks        int `json:"ticks"` // 此分钟的tick数量 >3 才会被记录和分发
 }
 
 func (r *RealMd) onMdConnected() {
 	logrus.Infoln("quote connected")
 	r.q.ReqLogin(r.investorID, r.password, r.brokerID)
+}
+
+func (r *RealMd) onMdDisConnected(reson int) {
+	logrus.Error("quote disconnected: ", reson)
 }
 
 func (r *RealMd) onMdLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoField) {

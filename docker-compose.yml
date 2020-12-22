@@ -8,9 +8,9 @@ services:
         environment:
             - "TZ=Asia/Shanghai"
             - "redisAddr=redis:6379"
-            - "front_trade=tcp://180.168.146.187:10101"
-            - "front_quote=tcp://180.168.146.187:10111"
-            - "login_info=008105/1/9999/simnow_client_test/0000000000000000"
+            - "tradeFront=tcp://180.168.146.187:10101"
+            - "quoteFront=tcp://180.168.146.187:10111"
+            - "loginInfo=008105/1/9999/simnow_client_test/0000000000000000"
             - "pgMin=postgresql://postgres:12345@pg_real:5432/postgres?sslmode=disable"
         deploy:
             resources:
