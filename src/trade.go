@@ -35,6 +35,11 @@ func (r *RealMd) onLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFiel
 		// r.mapInstrumentStatus = sync.Map{} // 会导致收不到行情：登录事件时交易状态已更新
 		// 初始化 actionday
 		if t, err := time.Parse("20060102", login.TradingDay); err == nil {
+			preDay := r.rdb.HGet(r.ctx, "tradingday", "curday").String()
+			if strings.Compare(preDay, login.TradingDay) != 0 {
+				r.rdb.FlushAll(r.ctx)
+				r.rdb.HSet(r.ctx, "tradingday", "curday", login.TradingDay)
+			}
 			if t.Weekday() == time.Monday { // 周一
 				r.actionDay = t.AddDate(0, 0, -3).Format("20060102")     // 上周五
 				r.actionDayNext = t.AddDate(0, 0, -2).Format("20060102") // 上周六
@@ -42,6 +47,8 @@ func (r *RealMd) onLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFiel
 				r.actionDay = t.AddDate(0, 0, -1).Format("20060102") // 上一天
 				r.actionDayNext = login.TradingDay                   // 本日
 			}
+		} else {
+			logrus.Error("日期字段错误：", login.TradingDay)
 		}
 		// 更新所有合约状态
 		r.t.Instruments.Range(func(key, value interface{}) bool {

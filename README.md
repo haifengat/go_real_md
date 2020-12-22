@@ -59,10 +59,8 @@ go build -o realmd
 docker build -t haifengat/go_real_md:`date +%Y%m%d` .
 # hub.docker.com
 docker push haifengat/go_real_md:`date +%Y%m%d`
-# aliyun
-docker login --username=hubert28@qq.com registry-vpc.cn-shanghai.aliyuncs.com && \
-docker tag haifengat/go_real_md:`date +%Y%m%d` registry-vpc.cn-shanghai.aliyuncs.com/haifengat/go_real_md:`date +%Y%m%d` \
-&& docker push registry-vpc.cn-shanghai.aliyuncs.com/haifengat/go_real_md:`date +%Y%m%d`
+# save
+docker save haifengat/go_real_md:`date +%Y%m%d` |gzip > go_real_md.`date +%Y%m%d`.tgz
 ```
 
 ## 附
@@ -84,3 +82,4 @@ docker tag haifengat/go_real_md:`date +%Y%m%d` registry-vpc.cn-shanghai.aliyuncs
 
 ###  pq: duplicate key value violates unique constraint "future_min_datetime_instrument
 ticks改用bar.ticks处理
+分钟是否更新用 > 判断，防止小于当前分钟的数据生成
