@@ -15,3 +15,4 @@ pg*/
 .vs*/
 realmd
 _*
+!lib/*

@@ -209,14 +209,16 @@ func (r *RealMd) Run() {
 	<-r.chLogin // 等待登录结束
 	go r.startQuote()
 	defer func() {
-		logrus.Info("close api")
+		logrus.Info("close trade")
 		r.t.Release()
+		logrus.Info("close quote")
 		r.q.Release()
 	}()
 	for {
 		var cntNotClose = 0
 		var cntTrading = 0
 		time.Sleep(1 * time.Minute) // 每分钟判断一次
+		logrus.Info("ticks: ", ticks, "/", execTicks)
 		r.t.InstrumentStatuss.Range(func(k, v interface{}) bool {
 			status := v.(goctp.InstrumentStatus)
 			if status.InstrumentStatus != goctp.InstrumentStatusClosed {

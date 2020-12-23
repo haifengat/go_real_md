@@ -16,13 +16,17 @@ func (r *RealMd) startQuote() {
 	r.q.RegOnFrontDisConnected(r.onMdDisConnected)
 	r.q.RegOnRspUserLogin(r.onMdLogin)
 	r.q.RegOnTick(r.onTick)
-	logrus.Infoln("connected to quote...")
+	logrus.Info("connected to quote...")
 	r.q.ReqConnect(r.quoteFront)
 }
+
+var ticks = 0
+var execTicks = 0
 
 func (r *RealMd) onTick(data *goctp.TickField) {
 	if bs, err := json.Marshal(data); err == nil {
 		// println(string(bs))
+		ticks++
 		go r.runTick(bs)
 	} else {
 		logrus.Infoln("ontick")
@@ -118,6 +122,7 @@ func (r *RealMd) runTick(bsTick []byte) {
 		}
 	}
 	r.instLastMin.Store(inst, bar)
+	execTicks++
 }
 
 // Bar 分钟K线

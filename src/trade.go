@@ -35,7 +35,7 @@ func (r *RealMd) onLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFiel
 		// r.mapInstrumentStatus = sync.Map{} // 会导致收不到行情：登录事件时交易状态已更新
 		// 初始化 actionday
 		if t, err := time.Parse("20060102", login.TradingDay); err == nil {
-			preDay := r.rdb.HGet(r.ctx, "tradingday", "curday").String()
+			preDay, _ := r.rdb.HGet(r.ctx, "tradingday", "curday").Result()
 			if strings.Compare(preDay, login.TradingDay) != 0 {
 				r.rdb.FlushAll(r.ctx)
 				r.rdb.HSet(r.ctx, "tradingday", "curday", login.TradingDay)
@@ -53,6 +53,9 @@ func (r *RealMd) onLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFiel
 		// 更新所有合约状态
 		r.t.Instruments.Range(func(key, value interface{}) bool {
 			pid := value.(goctp.InstrumentField).ProductID
+			if len(pid) == 0 {
+				return true
+			}
 			if status, loaded := r.mapInstrumentStatus.Load(pid); loaded {
 				r.mapInstrumentStatus.Store(key, status)
 			}
