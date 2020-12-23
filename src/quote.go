@@ -6,6 +6,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/haifengat/goctp"
 	"github.com/sirupsen/logrus"
@@ -152,6 +153,9 @@ func (r *RealMd) onMdLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFi
 	logrus.Infoln("quote login:", info)
 	// r.q.ReqSubscript("au2012")
 	r.t.Instruments.Range(func(k, v interface{}) bool {
+		if len(v.(goctp.InstrumentField).ProductID) == 0 {
+			return true
+		}
 		// 取最新K线数据
 		inst := k.(string)
 		if jsonMin, err := r.rdb.LRange(r.ctx, inst, -1, -1).Result(); err == nil && len(jsonMin) > 0 {
@@ -166,6 +170,9 @@ func (r *RealMd) onMdLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFi
 	ps := len(r.products)
 	// 订阅行情
 	r.t.Instruments.Range(func(k, v interface{}) bool {
+		if len(v.(goctp.InstrumentField).ProductID) == 0 { // 过滤 非正常合约
+			return true
+		}
 		if ps > 0 {
 			// 大写比较
 			p := strings.ToUpper(v.(goctp.InstrumentField).ProductID)
@@ -184,6 +191,9 @@ func (r *RealMd) onMdLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFi
 			}
 		}
 		r.q.ReqSubscript(k.(string))
+		if i%5000 == 0 { // 防止网络限制
+			time.Sleep(1 * time.Second)
+		}
 		i++
 		return true
 	})

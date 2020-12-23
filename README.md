@@ -60,7 +60,7 @@ docker build -t haifengat/go_real_md:`date +%Y%m%d` .
 # hub.docker.com
 docker push haifengat/go_real_md:`date +%Y%m%d`
 # save
-docker save haifengat/go_real_md:`date +%Y%m%d` |gzip > go_real_md.`date +%Y%m%d`.tgz
+docker save haifengat/go_real_md:`date +%Y%m%d` |gzip > /mnt/go_real_md.`date +%Y%m%d`.tgz
 ```
 
 ## 附
