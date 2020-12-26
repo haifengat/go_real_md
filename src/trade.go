@@ -52,7 +52,7 @@ func (r *RealMd) onLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFiel
 		}
 		// 更新所有合约状态
 		r.t.Instruments.Range(func(key, value interface{}) bool {
-			pid := value.(goctp.InstrumentField).ProductID
+			pid := value.(*goctp.InstrumentField).ProductID
 			if len(pid) == 0 {
 				return true
 			}
@@ -80,7 +80,7 @@ func (r *RealMd) onRtnStatus(field *goctp.InstrumentStatus) {
 	r.mapInstrumentStatus.Store(field.InstrumentID, field.InstrumentStatus)
 	// 更新对应合约的交易状态
 	r.t.Instruments.Range(func(key, value interface{}) bool {
-		if strings.Compare(value.(goctp.InstrumentField).ProductID, field.InstrumentID) == 0 {
+		if strings.Compare(value.(*goctp.InstrumentField).ProductID, field.InstrumentID) == 0 {
 			r.mapInstrumentStatus.Store(key, field.InstrumentStatus)
 
 			// 非交易状态

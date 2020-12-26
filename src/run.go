@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math"
 	"os"
 	"strings"
 	"sync"
@@ -75,7 +74,7 @@ func NewRealMd() (*RealMd, error) {
 	}
 	redisAddr = tmp
 
-	logrus.Info(redisAddr)
+	logrus.Info("redis: ", redisAddr)
 	r.rdb = redis.NewClient(&redis.Options{
 		Addr:         redisAddr,
 		Password:     "",  // no password set
@@ -107,12 +106,14 @@ func NewRealMd() (*RealMd, error) {
 		// 退出时关闭
 		defer conn.Close()
 	}
+	logrus.Info("postgres :", pgMin)
 
 	tmp = os.Getenv("products")
 	if len(tmp) > 0 {
 		for _, p := range strings.Split(tmp, ",") {
 			r.products = append(r.products, strings.ToUpper(strings.Trim(p, " ")))
 		}
+		logrus.Info("products: ", tmp)
 	}
 
 	r.t = ctp.NewTrade()
@@ -160,8 +161,11 @@ func (r *RealMd) inserrtPg() (err error) {
 		return
 	}
 	for _, inst := range keys {
-		// 合约过滤
-		if _, ok := r.t.Instruments.Load(inst); !ok {
+		// 过滤合约
+		// if _, ok := r.t.Instruments.Load(inst); !ok {
+		// 	continue
+		// }
+		if strings.Compare(inst, "tradingday") == 0 {
 			continue
 		}
 		var mins = []string{}
@@ -170,17 +174,16 @@ func (r *RealMd) inserrtPg() (err error) {
 			return
 		}
 		for _, bsMin := range mins {
-			var bar = make(map[string]interface{})
+			// var bar = make(map[string]interface{})
+			var bar = Bar{}
 			if err = json.Unmarshal([]byte(bsMin), &bar); err != nil {
 				logrus.Error("解析bar错误:", bar, " ", err)
 				continue
 			}
-			// 过滤空指针的数据(double.MAX)
-			if bar["High"].(float64) >= math.MaxFloat32 {
-				continue
-			}
+			logrus.Info(bar)
 			// 入库
-			if _, err = stmt.Exec(bar["_id"], inst, bar["Open"], bar["High"], bar["Low"], bar["Close"], int(bar["Volume"].(float64)), bar["OpenInterest"], bar["TradingDay"]); err != nil {
+			if _, err = stmt.Exec(bar.ID, inst, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, bar.OpenInterest, bar.TradingDay); err != nil {
+				//bar["_id"], inst, bar["Open"], bar["High"], bar["Low"], bar["Close"], int(bar["Volume"].(float64)), bar["OpenInterest"], bar["TradingDay"]); err != nil {
 				logrus.Errorf("分钟入库smtp.exec(fields)错误: %d, %s, %v, %v", i, inst, bar, err)
 				// return 遇到错误，只提示不处理
 			}

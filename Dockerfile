@@ -11,14 +11,12 @@ FROM busybox:glibc
 WORKDIR /app
 COPY ./Shanghai /usr/share/zoneinfo/Asia/
 RUN ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
-COPY ./realmd ./
-COPY ./lib/*.so ./
+COPY ./realmd ./lib ./lib64 ./
 # 交易日历，每年更新一次
 # RUN yum install -y wget; \
 #  wget http://data.haifengat.com/calendar.csv;
 COPY ./calendar.csv ./
 ENV LD_LIBRARY_PATH /app
 
-COPY lib64 /lib64
-#USER app-runner
+# COPY lib64 /lib64
 ENTRYPOINT ["./realmd"]

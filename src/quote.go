@@ -153,7 +153,7 @@ func (r *RealMd) onMdLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFi
 	logrus.Infoln("quote login:", info)
 	// r.q.ReqSubscript("au2012")
 	r.t.Instruments.Range(func(k, v interface{}) bool {
-		if len(v.(goctp.InstrumentField).ProductID) == 0 {
+		if len(v.(*goctp.InstrumentField).ProductID) == 0 {
 			return true
 		}
 		// 取最新K线数据
@@ -170,12 +170,12 @@ func (r *RealMd) onMdLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFi
 	ps := len(r.products)
 	// 订阅行情
 	r.t.Instruments.Range(func(k, v interface{}) bool {
-		if len(v.(goctp.InstrumentField).ProductID) == 0 { // 过滤 非正常合约
+		if len(v.(*goctp.InstrumentField).ProductID) == 0 { // 过滤 非正常合约
 			return true
 		}
 		if ps > 0 {
 			// 大写比较
-			p := strings.ToUpper(v.(goctp.InstrumentField).ProductID)
+			p := strings.ToUpper(v.(*goctp.InstrumentField).ProductID)
 			if len(p) == 0 { // BUK等组合合约productid为""
 				return true
 			}
