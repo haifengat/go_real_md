@@ -221,9 +221,8 @@ func (r *RealMd) Run() {
 		var cntNotClose = 0
 		var cntTrading = 0
 		time.Sleep(1 * time.Minute) // 每分钟判断一次
-		logrus.Info("ticks: ", ticks, "/", execTicks)
 		r.t.InstrumentStatuss.Range(func(k, v interface{}) bool {
-			status := v.(goctp.InstrumentStatus)
+			status := v.(*goctp.InstrumentStatus)
 			if status.InstrumentStatus != goctp.InstrumentStatusClosed {
 				cntNotClose++
 			}
@@ -250,7 +249,7 @@ func (r *RealMd) Run() {
 			break
 		}
 		if cntTrading > 0 {
-			logrus.Info(r.showTime)
+			logrus.Info(r.showTime, "->有效/全部：", execTicks)
 		}
 	}
 }
