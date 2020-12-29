@@ -173,21 +173,24 @@ func (r *RealMd) inserrtPg() (err error) {
 			logrus.Error("取redis数据错误:", inst, err)
 			return
 		}
+		preMin := ""
 		for _, bsMin := range mins {
-			// var bar = make(map[string]interface{})
 			var bar = Bar{}
 			if err = json.Unmarshal([]byte(bsMin), &bar); err != nil {
 				logrus.Error("解析bar错误:", bar, " ", err)
 				continue
 			}
-			logrus.Info(bar)
+			// logrus.Info(inst, " ", bar)
 			// 入库
-			if _, err = stmt.Exec(bar.ID, inst, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, bar.OpenInterest, bar.TradingDay); err != nil {
-				//bar["_id"], inst, bar["Open"], bar["High"], bar["Low"], bar["Close"], int(bar["Volume"].(float64)), bar["OpenInterest"], bar["TradingDay"]); err != nil {
-				logrus.Errorf("分钟入库smtp.exec(fields)错误: %d, %s, %v, %v", i, inst, bar, err)
-				// return 遇到错误，只提示不处理
+			if strings.Compare(bar.ID, preMin) > 0 {
+				if _, err = stmt.Exec(bar.ID, inst, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, bar.OpenInterest, bar.TradingDay); err != nil {
+					logrus.Errorf("分钟入库smtp.exec(fields)错误: %d, %s, %v, %v", i, inst, bar, err)
+					// return // 遇到错误，只提示不处理
+				} else {
+					i++
+				}
 			}
-			i++
+			preMin = bar.ID
 		}
 	}
 	if _, err = stmt.Exec(); err != nil {
@@ -248,8 +251,6 @@ func (r *RealMd) Run() {
 			logrus.Info("夜盘结束!")
 			break
 		}
-		if cntTrading > 0 {
-			logrus.Info(r.showTime, "->有效/全部：", execTicks)
-		}
+		logrus.Info(r.showTime, "->有效/全部：", execTicks, "/", ticks)
 	}
 }

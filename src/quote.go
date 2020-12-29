@@ -43,7 +43,7 @@ func (r *RealMd) runTick(bsTick []byte) {
 		return
 	}
 	// 合约状态过滤 == 会造成入库延时
-	if status, loaded := r.mapInstrumentStatus.Load(inst); !loaded || status != goctp.InstrumentStatusContinous {
+	if status, loaded := r.mapInstrumentStatus.Load(inst); !loaded || status.(*goctp.InstrumentStatus).InstrumentStatus != goctp.InstrumentStatusContinous {
 		return
 	}
 	last, _ = strconv.ParseFloat(fmt.Sprintf("%.4f", last), 64)
@@ -153,15 +153,19 @@ func (r *RealMd) onMdLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFi
 	logrus.Infoln("quote login:", info)
 	// r.q.ReqSubscript("au2012")
 	r.t.Instruments.Range(func(k, v interface{}) bool {
-		if len(v.(*goctp.InstrumentField).ProductID) == 0 {
-			return true
-		}
 		// 取最新K线数据
 		inst := k.(string)
 		if jsonMin, err := r.rdb.LRange(r.ctx, inst, -1, -1).Result(); err == nil && len(jsonMin) > 0 {
-			var bar = &Bar{}
+			var bar = new(Bar)
 			if json.Unmarshal([]byte(jsonMin[0]), bar) == nil {
 				r.instLastMin.Store(inst, bar)
+			}
+		}
+		// 更新合约状态
+		pid := v.(*goctp.InstrumentField).ProductID
+		if len(pid) > 0 {
+			if status, loaded := r.t.InstrumentStatuss.Load(pid); loaded {
+				r.mapInstrumentStatus.Store(k, status)
 			}
 		}
 		return true

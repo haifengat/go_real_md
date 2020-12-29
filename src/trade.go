@@ -1,7 +1,6 @@
 package src
 
 import (
-	"encoding/json"
 	"strings"
 	"sync"
 	"time"
@@ -50,17 +49,6 @@ func (r *RealMd) onLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFiel
 		} else {
 			logrus.Error("日期字段错误：", login.TradingDay)
 		}
-		// 更新所有合约状态
-		r.t.Instruments.Range(func(key, value interface{}) bool {
-			pid := value.(*goctp.InstrumentField).ProductID
-			if len(pid) == 0 {
-				return true
-			}
-			if status, loaded := r.mapInstrumentStatus.Load(pid); loaded {
-				r.mapInstrumentStatus.Store(key, status)
-			}
-			return true
-		})
 	}
 	// 登录响应
 	r.chLogin <- true
@@ -76,28 +64,4 @@ func (r *RealMd) onDisConnected(reason int) {
 }
 
 func (r *RealMd) onRtnStatus(field *goctp.InstrumentStatus) {
-	// 保存品种的状态：启动时instruments还未收到，需要记录此时状态以便后续处理
-	r.mapInstrumentStatus.Store(field.InstrumentID, field.InstrumentStatus)
-	// 更新对应合约的交易状态
-	r.t.Instruments.Range(func(key, value interface{}) bool {
-		if strings.Compare(value.(*goctp.InstrumentField).ProductID, field.InstrumentID) == 0 {
-			r.mapInstrumentStatus.Store(key, field.InstrumentStatus)
-
-			// 非交易状态
-			if field.InstrumentStatus != goctp.InstrumentStatusContinous {
-				// 取最后一个K线数据，如果时间为结束时间，则删除
-				if jsonMin, err := r.rdb.LRange(r.ctx, key.(string), -1, -1).Result(); err == nil && len(jsonMin) > 0 {
-					var bar = Bar{}
-					if err := json.Unmarshal([]byte(jsonMin[0]), &bar); err == nil {
-						// 时间为结束时间
-						if strings.Compare(strings.Split(bar.ID, " ")[1], field.EnterTime) == 0 {
-							// 删除此分钟的数据
-							r.rdb.RPop(r.ctx, key.(string))
-						}
-					}
-				}
-			}
-		}
-		return true
-	})
 }
