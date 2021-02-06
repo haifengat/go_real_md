@@ -37,6 +37,8 @@ func (r *RealMd) onLogin(login *goctp.RspUserLoginField, info *goctp.RspInfoFiel
 			preDay, _ := r.rdb.HGet(r.ctx, "tradingday", "curday").Result()
 			if strings.Compare(preDay, login.TradingDay) != 0 {
 				r.rdb.FlushAll(r.ctx)
+				ticks = 0
+				execTicks = 0
 				r.rdb.HSet(r.ctx, "tradingday", "curday", login.TradingDay)
 			}
 			if t.Weekday() == time.Monday { // 周一

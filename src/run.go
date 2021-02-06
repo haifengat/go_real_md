@@ -103,6 +103,37 @@ func NewRealMd() (*RealMd, error) {
 			logrus.Error("pgMin 配置错误:", err)
 			return nil, err
 		}
+		// 创建分钟表
+		// bs, err := ioutil.ReadFile("./src/create_table_min.sql")
+		// if err != nil {
+		// 	return nil, err
+		// }
+		sqls := strings.Split(`CREATE TABLE if not exists future.future_min  (
+			"DateTime" timestamp NOT NULL,
+			"Instrument" varchar(32) NOT NULL,
+			"Open" float4 NOT NULL,
+			"High" float4 NOT NULL,
+			"Low" float4 NOT NULL,
+			"Close" float4 NOT NULL,
+			"Volume" int4 NOT NULL,
+			"OpenInterest" float8 NOT NULL,
+			"TradingDay" varchar(8) NOT NULL,
+			CONSTRAINT future_min_datetime_instrument PRIMARY KEY ("DateTime", "Instrument")
+		);
+		CREATE INDEX if not exists future_min_instrument_idx ON future.future_min USING btree ("Instrument");
+		CREATE INDEX if not exists future_min_instrument_tradingdayidx ON future.future_min USING btree ("Instrument", "TradingDay");
+		CREATE INDEX if not exists future_min_tradingday ON future.future_min USING btree ("TradingDay");
+		`, ";")
+		for _, sql := range sqls {
+			stmt, err := conn.Prepare(sql)
+			if err != nil {
+				return nil, err
+			}
+			_, err = stmt.Exec(nil)
+			if err != nil {
+				return nil, err
+			}
+		}
 		// 退出时关闭
 		defer conn.Close()
 	}

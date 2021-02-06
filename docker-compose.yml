@@ -24,7 +24,7 @@ services:
             - pg_real
     # 遇到the database system is starting up错误, 配置数据文件下的postgres.conf,hot_standby=on
     pg_real:
-        image: harbor.do.io/library/postgres:12-alpine
+        image: postgres:12-alpine
         container_name: pg_real
         restart: always
         environment:
@@ -33,7 +33,7 @@ services:
         volumes:
             - ./pg_data:/var/lib/postgresql/data
     redis:
-        image: harbor.do.io/library/redis:6.0.8-alpine3.12
+        image: redis:6.0.8-alpine3.12
         container_name: redis
         restart: always
         environment:
