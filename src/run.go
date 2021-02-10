@@ -108,7 +108,8 @@ func NewRealMd() (*RealMd, error) {
 		// if err != nil {
 		// 	return nil, err
 		// }
-		sqls := strings.Split(`CREATE TABLE if not exists future.future_min  (
+		sqls := strings.Split(`CREATE SCHEMA if not exists future;
+		CREATE TABLE if not exists future.future_min  (
 			"DateTime" timestamp NOT NULL,
 			"Instrument" varchar(32) NOT NULL,
 			"Open" float4 NOT NULL,
